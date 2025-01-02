@@ -32,34 +32,43 @@ RUN apk update && apk add --no-cache \
     && python3 -m ensurepip \
     && pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Bearer install
-RUN curl -L https://github.com/Bearer/bearer/releases/download/v${BEARER_VERSION}/bearer_${BEARER_VERSION}_linux_amd64.tar.gz | tar xz -C /usr/local/bin \
-    && chmod +x /usr/local/bin/bearer
+# Bearer install with checksum validation
+RUN curl -L https://github.com/Bearer/bearer/releases/download/v${BEARER_VERSION}/bearer_${BEARER_VERSION}_linux_amd64.tar.gz -o /tmp/bearer.tar.gz \
+    && echo "<checksum_value>  /tmp/bearer.tar.gz" | sha256sum -c - \
+    && tar xz -C /usr/local/bin -f /tmp/bearer.tar.gz \
+    && chmod +x /usr/local/bin/bearer \
+    && rm /tmp/bearer.tar.gz
 
 # OWASP ZAP configuration
-RUN curl -sSL https://github.com/zaproxy/zaproxy/releases/latest/download/ZAP_2_13_0_Linux.tar.gz | tar -xzf - -C /opt \
-    && ln -s /opt/ZAP_2_13_0/zap.sh /usr/bin/zap
+RUN curl -sSL https://github.com/zaproxy/zaproxy/releases/latest/download/ZAP_2_13_0_Linux.tar.gz -o /tmp/zap.tar.gz \
+    && tar -xzf /tmp/zap.tar.gz -C /opt \
+    && ln -s /opt/ZAP_2_13_0/zap.sh /usr/bin/zap \
+    && rm /tmp/zap.tar.gz
 
-# Instalar Terraform
+# Terraform install with checksum validation
 RUN curl -L https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip -o /tmp/terraform.zip \
+    && echo "<checksum_value>  /tmp/terraform.zip" | sha256sum -c - \
     && unzip /tmp/terraform.zip -d /usr/local/bin \
     && rm /tmp/terraform.zip 
 
-# Instalar Ansible
+# Ansible install
 RUN pip install ansible==${ANSIBLE_VERSION}
 
-# Instalar Prometheus
-RUN curl -L https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz | tar xz -C /opt \
-    && ln -s /opt/prometheus-${PROMETHEUS_VERSION}.linux-amd64/prometheus /usr/local/bin/prometheus
-
+# Prometheus install
+RUN curl -L https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz -o /tmp/prometheus.tar.gz \
+    && tar xz -C /opt -f /tmp/prometheus.tar.gz \
+    && ln -s /opt/prometheus-${PROMETHEUS_VERSION}.linux-amd64/prometheus /usr/local/bin/prometheus \
+    && rm /tmp/prometheus.tar.gz
 
 # Logs directory
 RUN mkdir -p /app /logs
+VOLUME /logs
 
 # Working directories and Users
 WORKDIR /app
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
     && chown -R appuser:appgroup /app
+USER appuser
 
 # Health Check Script
 COPY healthcheck.sh /usr/local/bin/healthcheck.sh
