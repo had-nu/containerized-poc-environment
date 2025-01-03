@@ -8,12 +8,13 @@ LABEL maintainer="andre_ataide@proton.me"
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     PYTHONUNBUFFERD=1 \
-    BEARER_VERSION=2.6.0 \
+    ZAP_VERSION=2.15.0 \
+    ZAP_CHECKSUM=6410e196baab458a9204e29aafb5745fca003a2a6c0386f2c6e5c04b67621fa7 \
     TERRAFORM_VERSION=1.6.0 \
     ANSIBLE_VERSION=8.0.0 \
     PROMETHEUS_VERSION=2.47.0
 
-# Updating packages and installing essential tools
+# Updating packages and installing essential tools [ok]
 # `apk add` is used in Alpine to manage packages. We have chosen the following:
 # - curl: for interactions with APIs.
 # - bash: for better scripting compatibility.
@@ -22,34 +23,41 @@ ENV LANG=C.UTF-8 \
 RUN apk update && apk add --no-cache \
     bash \
     curl \
+    ca-certificates \
+    gcompat \
     python3 \
     py3-pip \
     git \
     openjdk11 \
     jq \
     libc6-compat \
+    libstdc++ \
+    libgcc \
     tini \
     && python3 -m ensurepip \
-    && pip install --no-cache-dir --upgrade pip setuptools wheel
+    && pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && apk add --no-cache --virtual=build-deps build-base \
+    && apk add --no-cache dpkg dpkg-dev apt \
+    && rm -rf /var/lib/apt/lists/*
 
-# Bearer install with checksum validation
-RUN curl -L https://github.com/Bearer/bearer/releases/download/v${BEARER_VERSION}/bearer_${BEARER_VERSION}_linux_amd64.tar.gz -o /tmp/bearer.tar.gz \
-    && echo "<checksum_value>  /tmp/bearer.tar.gz" | sha256sum -c - \
-    && tar xz -C /usr/local/bin -f /tmp/bearer.tar.gz \
-    && chmod +x /usr/local/bin/bearer \
-    && rm /tmp/bearer.tar.gz
+# Use Bearer CLI Docker image to copy the binary [ok]
+COPY --from=bearer/bearer:latest /usr/local/bin/bearer /usr/local/bin/bearer
+RUN chmod +x /usr/local/bin/bearer
 
-# OWASP ZAP configuration
-RUN curl -sSL https://github.com/zaproxy/zaproxy/releases/latest/download/ZAP_2_13_0_Linux.tar.gz -o /tmp/zap.tar.gz \
+# OWASP ZAP Checkmarx configuration with checksum validation [OK]
+RUN curl -sSL https://github.com/zaproxy/zaproxy/releases/download/v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz -o /tmp/zap.tar.gz \
+    && echo "${ZAP_CHECKSUM}  /tmp/zap.tar.gz" | sha256sum -c - \
     && tar -xzf /tmp/zap.tar.gz -C /opt \
-    && ln -s /opt/ZAP_2_13_0/zap.sh /usr/bin/zap \
+    && ln -s /opt/ZAP_${ZAP_VERSION}/zap.sh /usr/bin/zap \
     && rm /tmp/zap.tar.gz
 
 # Terraform install with checksum validation
-RUN curl -L https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip -o /tmp/terraform.zip \
-    && echo "<checksum_value>  /tmp/terraform.zip" | sha256sum -c - \
+RUN apt-get install -y terraform \
+    && rm -rf /var/lib/apt/lists/* \
+    && grep "terraform_${TERRAFORM_VERSION}_linux_amd64.zip" /tmp/terraform.sha256 > /tmp/terraform.sha256sum \
+    && sha256sum -c /tmp/terraform.sha256sum \
     && unzip /tmp/terraform.zip -d /usr/local/bin \
-    && rm /tmp/terraform.zip 
+    && rm /tmp/terraform.zip /tmp/terraform.sha256 /tmp/terraform.sha256sum 
 
 # Ansible install
 RUN pip install ansible==${ANSIBLE_VERSION}
